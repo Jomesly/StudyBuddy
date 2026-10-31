@@ -1,0 +1,52 @@
+﻿# Dependencies and Python environments
+node_modules/
+venv/
+.venv/
+.venv-web/
+__pycache__/
+*.py[cod]
+yolov5/
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.git-credentials
+credentials.json
+secrets.json
+
+# Downloaded models, training output, and generated browser assets
+*.pt
+*.pth
+*.weights
+*.onnx
+runs/
+public/models/
+public/wasm/
+public/vision-worker.js
+*.download
+
+# Builds, test output, and local data
+dist/
+coverage/
+test-results/
+playwright-report/
+.playwright-mcp/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+recordings/
+captures/
+.cache/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

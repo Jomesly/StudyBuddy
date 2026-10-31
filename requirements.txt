@@ -1,0 +1,10 @@
+# Original detection engine and local browser API (Python 3.11).
+mediapipe==0.10.14
+pygame==2.6.1
+opencv-python>=4.10,<4.13
+numpy>=1.26,<3
+PyGetWindow==0.0.9
+ultralytics>=8.3,<9
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+pygrabber==0.2; sys_platform == "win32"

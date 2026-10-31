@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A study dashboard with a focus timer, local distraction detection, and session history.">
+<meta name="theme-color" content="#f4f7f6"><title>StudyBuddy — a quieter study space</title>
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/src/styles.css"></head>
+<body><a class="skip-link" href="#main">Skip to your session</a>
+<div class="app" id="app" data-theme="light">
+
+<aside class="sidebar" aria-label="StudyBuddy">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">StudyBuddy</span></div>
+  <nav class="nav" aria-label="Main">
+    <button id="nav-focus" aria-current="page"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/></svg><span class="nav-label">Focus</span></button>
+    <button id="nav-history"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span class="nav-label">History</span></button>
+    <button id="open-settings" aria-haspopup="dialog"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="nav-label">Settings</span></button>
+  </nav>
+  <div class="sidebar-foot">
+    <p class="engine-chip" id="engine-chip" data-state="connecting"><i class="dot" aria-hidden="true"></i><span id="engine-chip-text">Connecting to engine</span></p>
+    <p class="meta" id="sensor-status">Camera off · Tab reminders off</p>
+    <p class="meta" id="storage-status">Your session, on your device</p>
+  </div>
+</aside>
+
+<main class="main" id="main" tabindex="-1">
+  <header class="topbar">
+    <p class="eyebrow" id="today-label"></p>
+    <h1 id="page-heading" tabindex="-1">Make room for one thing.</h1>
+    <p class="lede" id="page-description">Choose a task. Find a comfortable pace.</p>
+  </header>
+
+  <div class="notice" id="notice" hidden><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4 21 20H3z"/><path d="M12 10v4M12 17v.5"/></svg><div><p id="notice-text"></p><div class="notice-actions" id="notice-actions"></div></div></div>
+
+  <section class="stats" id="stats" aria-label="Your study at a glance">
+    <div class="tile" data-accent="blue"><p class="tile-label">Focused today</p><p class="tile-value" id="stat-today">0 min</p><p class="tile-hint">Active session time</p></div>
+    <div class="tile" data-accent="sky"><p class="tile-label">Last 7 days</p><p class="tile-value" id="stat-week">0 min</p><p class="tile-hint" id="stat-week-hint">No sessions yet</p></div>
+    <div class="tile" data-accent="marigold"><p class="tile-label">Sessions</p><p class="tile-value" id="stat-sessions">0</p><p class="tile-hint">In the last 7 days</p></div>
+    <div class="tile" data-accent="coral"><p class="tile-label">Reminders</p><p class="tile-value" id="stat-reminders">0</p><p class="tile-hint" id="stat-reminders-hint">In the last 7 days</p></div>
+  </section>
+
+  <div class="workspace">
+      <section class="card" id="ready-view" aria-labelledby="new-session-title">
+        <div class="card-head"><h2 class="card-title" id="new-session-title">New session</h2><span class="pill">Your study space</span></div>
+        <form id="session-form" novalidate>
+          <div class="field"><label for="task">What would you like to work on?</label><input id="task" type="text" maxlength="100" placeholder="Read a chapter, work on a project…" required aria-describedby="task-error"><p id="task-error" class="error" hidden>Give your session a short name.</p></div>
+          <div class="field-row">
+            <div class="field"><label for="duration">Session length</label><select id="duration"><option value="25">25 minutes</option><option value="50">50 minutes</option><option value="15">15 minutes</option></select></div>
+            <div class="field"><label for="mode">Study style</label><select id="mode"><option value="screen">Screen study</option><option value="paper">Paper notes</option><option value="lecture">Lecture</option></select></div>
+          </div>
+      <details class="card monitoring-settings" id="monitoring-card" aria-labelledby="monitoring-title">
+        <summary id="monitoring-title"><span>Monitoring settings</span><span class="summary-note">Camera, app checks &amp; exceptions</span></summary><div class="monitoring-body">
+        <div class="field"><label for="engine">Detection engine</label><select id="engine"><option value="python">Original Python engine · full monitoring</option><option value="browser">Browser only · limited monitoring</option></select><p class="hint" id="engine-connection" role="status">Connecting to the original detection engine…</p></div>
+        <div class="switch-list" id="monitoring-controls">
+          <label class="switch-row"><input type="checkbox" role="switch" id="camera"><span>Camera reminders<small>Optional. Off means the camera is not used.</small></span></label>
+          <label class="switch-row"><input type="checkbox" role="switch" id="app-check"><span>Tab-away reminders<small>Only detects this tab being hidden.</small></span></label>
+          <label class="switch-row"><input type="checkbox" role="switch" id="mouth-check" checked><span>Possible talking reminders<small>Mouth movement while looking away. No microphone.</small></span></label>
+        </div>
+        <div class="field" id="allowed-apps-field"><label for="allowed-apps">Apps or sites allowed for this task</label><input id="allowed-apps" type="text" maxlength="500" placeholder="For example: YouTube, Discord"><p class="hint">Optional exceptions to distraction detection. Separate names with commas.</p></div>
+        <p class="hint" id="privacy-hint">Detection and camera preview stay on this computer. No video is recorded.</p>
+      </div></details>
+          <div class="card-actions"><p class="hint" id="start-summary">Camera and app checks follow your monitoring settings.</p><button class="primary" type="submit">Start session</button></div>
+        </form>
+      </section>
+
+      <section class="timer-card" id="session-view" aria-label="Current session" hidden>
+        <p class="session-label" id="session-label">Focus session</p>
+        <p class="timer" id="timer" role="timer" aria-label="Time remaining" aria-live="off">25:00</p>
+        <p class="timer-caption" id="timer-caption">A little time for your next step.</p>
+        <progress id="session-progress" max="1500" value="0" aria-label="Session progress"></progress>
+        <div class="progress-labels"><span id="elapsed-label">0 min elapsed</span><span id="planned-label">25 min planned</span></div>
+        <div class="card-actions"><button class="quiet-action" id="end">End session</button><button class="primary" id="pause">Pause session</button></div>
+      </section>
+
+      <section class="card" id="camera-panel" aria-labelledby="camera-title">
+        <div class="card-head"><h2 class="card-title" id="camera-title">Camera</h2><span class="pill" id="camera-chip" data-state="off">Off</span></div>
+        <details id="camera-details" class="options" open><summary>Camera preview &amp; details</summary>
+          <div class="camera-frame"><video id="camera-video" autoplay playsinline muted aria-label="Your live camera preview"></video><img id="native-camera-image" alt="Live camera with original face, phone and hand detection" hidden><canvas id="camera-overlay" aria-hidden="true"></canvas><span id="camera-placeholder">Your preview appears here when the camera is on.</span></div>
+          <details class="camera-insights"><summary>Detection details</summary><dl class="sensor-details"><div><dt>Face &amp; direction</dt><dd id="face-detail">Not checked</dd></div><div><dt>Phone</dt><dd id="phone-detail">Not checked</dd></div><div><dt>Hands</dt><dd id="hands-detail">Not checked</dd></div></dl>
+          <button class="quiet-action" id="calibrate-camera" disabled>Recalibrate head direction</button>
+          <p class="hint">Camera observations can be wrong; they do not measure attention. Phone visibility does not prove use.</p></details>
+        </details>
+        <p id="camera-message" role="status">Optional camera reminders. Everything is processed on your device.</p>
+        <div class="camera-controls">
+        <div class="field" id="native-camera-field"><label for="native-camera-index">Camera device</label>
+          <div class="select-row"><select id="native-camera-index"><option value="0">Default camera (0)</option></select><button class="icon-button" id="refresh-cameras" type="button" aria-label="Refresh camera list" title="Refresh camera list"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 8a8 8 0 1 0 1 6"/><path d="M20 4v4h-4"/></svg></button></div>
+          <p class="hint" id="camera-list-hint" role="status"></p></div>
+        <div class="field" id="camera-device-field" hidden><label for="camera-device">Camera</label><select id="camera-device"></select></div>
+        <div class="card-actions start"><button class="ghost" id="enable-camera">Enable camera</button><button class="quiet-action" id="stop-camera" hidden>Turn camera off</button></div>
+        </div>
+      </section>
+
+      <section class="card" id="live-card" aria-labelledby="live-monitoring-title" hidden>
+        <h2 class="card-title" id="live-monitoring-title">Distraction monitoring</h2>
+        <p id="live-status" role="status" data-warning="false">Waiting for detection…</p>
+        <p id="active-app" class="hint">Active app: not checked</p>
+        <p id="native-audio-error" class="error" hidden></p>
+        <details class="options"><summary>Live session stats</summary><dl class="observation-list" id="live-stats"></dl><p class="hint">Estimated focus uses the original camera and app rules. It is an estimate, not a measure of learning.</p></details>
+      </section>
+
+
+
+      <details class="card recent-details" id="recent-card" aria-labelledby="recent-title">
+        <summary id="recent-title">Recent sessions</summary>
+        <div id="recent-list"></div>
+        <button class="outlined" id="view-all-history" type="button">View all</button>
+      </details>
+
+      <section class="card" id="summary-view" aria-label="Session recap" hidden>
+        <p class="summary-message" id="summary-message">You made space for your work.</p>
+        <dl class="totals"><div><dt>Active time</dt><dd id="summary-active">25 min</dd></div><div><dt>Paused</dt><dd id="summary-paused">2 min</dd></div><div><dt>Reminders</dt><dd id="summary-reminders">1</dd></div></dl>
+        <p class="hint" id="summary-help">Time describes the session, not how much you learned.</p>
+        <details class="options" id="observation-details"><summary>Session observations</summary><dl id="observation-list" class="observation-list"></dl><p class="hint">These are sampled camera observations and app or tab time, not a focus score. Overlapping observations are not added together. Unobserved time is not filled in.</p></details>
+        <div class="field reflection-field"><label for="reflection">One thing you moved forward <span class="muted">(optional)</span></label><textarea id="reflection" class="reflection" placeholder="A small step counts."></textarea></div>
+        <div class="card-actions"><button class="quiet-action" id="save-note">Keep this note</button><button class="primary" id="new-session">Plan another session</button></div>
+        <p class="saved-note" id="saved-note" role="status"></p>
+      </section>
+
+      <section class="card" id="history-view" aria-labelledby="history-title" hidden>
+        <div class="card-head"><h2 class="card-title" id="history-title">All sessions</h2>
+          <div class="head-actions" id="history-actions" hidden><button class="quiet-action danger-text" id="clear-history">Clear history</button><button class="ghost" id="export-history">Export history</button></div></div>
+        <div class="notice" id="clear-confirm" hidden><div><p>Delete all session history and notes from this browser? This cannot be undone.</p><div class="notice-actions"><button id="confirm-clear">Delete history</button><button id="cancel-clear">Keep history</button></div></div></div>
+        <div id="history-list"></div>
+      </section>
+
+      <details class="support" id="support" aria-labelledby="support-title">
+        <summary id="support-title">Your pace, your space.</summary>
+        <p id="support-description">A short session is a good place to start. You can pause whenever you need.</p>
+        <dl><div><dt id="support-label-one">After this session</dt><dd id="support-value-one">A 5-minute break</dd></div><div><dt id="support-label-two">Reminders</dt><dd id="support-value-two">Gentle and quiet</dd></div></dl>
+        <p class="quote" id="support-note">No scores to chase. Just the task you chose.</p>
+      </details>
+  </div>
+
+  <details class="privacy-note"><summary>Privacy &amp; monitoring</summary><p>The original Python engine runs on this computer. It uses your original YOLOv8 model, MediaPipe face/head/mouth/hand detection, foreground window titles, and alert sound files. Camera images and app titles stay on this computer; preview images travel only over the local connection. No video recording or microphone is used. Pause or End session stops monitoring.</p><p>Full monitoring continues when you switch tabs or applications, until the session ends. It identifies active browser tabs from their visible window title, as the original app did; it does not read browsing history or URLs. Browser-only mode has limited tab visibility checks and suspends camera detection when hidden. Completed sessions and notes are saved in this browser; export or clear them in History.</p></details>
+</main>
+
+<dialog id="settings" aria-labelledby="settings-title"><h2 id="settings-title">Make yourself comfortable.</h2><p class="hint">A few preferences. Nothing to configure before you begin.</p><div class="field"><label for="theme">Appearance</label><select id="theme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">Follow system</option></select></div><label class="switch-row"><input id="mute" type="checkbox" role="switch" checked><span>Keep reminders silent<small>Show a gentle message without a sound.</small></span></label><p class="hint">Preferences and completed sessions are saved in this browser, on this device.</p><div class="card-actions"><button class="quiet-action" id="test-sound">Try reminder sound</button><button class="primary" id="close-settings">Done</button></div></dialog>
+<p id="announcer" role="status" class="toast"></p>
+</div>
+<script type="module" src="/src/app.js"></script></body></html>
