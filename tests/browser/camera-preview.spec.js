@@ -45,7 +45,7 @@ test('Python preview renders continuously and stops streaming when hidden or swi
   });
   await page.goto('/');
   await expect(page.getByLabel('Camera device')).toHaveValue('0');
-  await expect(page.locator('#camera-message')).toContainText('30 FPS');
+  await expect(page.locator('#camera-fps')).toContainText('30 FPS');
   await expect.poll(() => page.evaluate(() => window.previewStats.rendered), { timeout: 3000 }).toBeGreaterThan(35);
   expect(await page.evaluate(() => window.previewStats.requests)).toBe(1);
   await page.getByText('Camera preview & details', { exact: true }).click();

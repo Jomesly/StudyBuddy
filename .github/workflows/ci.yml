@@ -1,0 +1,40 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYGAME_HIDE_SUPPORT_PROMPT: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: npm ci
+      - name: Prepare detection environment
+        run: |
+          python -m venv .venv-web
+          .\.venv-web\Scripts\python.exe -m pip install -r requirements-dev.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\.venv-web\Scripts\python.exe -m backend.check_runtime
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\.venv-web\Scripts\python.exe -m pip check
+      - run: npm test
+      - run: .\.venv-web\Scripts\python.exe -m unittest discover -s tests/python -v
+      - run: npm run build
+      - run: npx playwright install chromium
+      - run: npm run test:e2e

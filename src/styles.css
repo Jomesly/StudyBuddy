@@ -268,6 +268,12 @@ dialog .field{margin-top:20px}
 .app[data-view=session] .topbar{margin-bottom:16px}
 .app[data-view=session] #support{display:none}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.topbar{position:relative}
+.workspace-status{position:absolute;top:0;right:0;margin:0;color:var(--body);font-size:12px;line-height:20px}
+.camera-fps:empty{display:none}
+#camera-fps{margin:0 0 0 auto;font-size:11px;color:var(--muted);text-align:right}
+#snooze-status{grid-column:1/-1;margin:8px 0 0;color:var(--warn-ink)}
+#import-status:empty{display:none}
 
 /* Tablet: icon rail keeps every label in the DOM for assistive technology. */
 @media (max-width:1100px){
@@ -352,4 +358,26 @@ dialog .field{margin-top:20px}
  .tile-value{margin-top:4px}
  .tile-hint{margin-top:4px}
  .monitoring-settings>summary{padding-inline:12px}
+ .main{display:flex;flex-direction:column}
+ .workspace{order:2}
+ #notice{order:1}
+ #stats{order:3;margin-top:16px}
+ #support,.privacy-note{order:4}
+ .workspace-status{position:static;margin-top:8px}
+ #camera-panel[data-camera=off] #camera-details{display:none}
+ #history-view .card-head{flex-direction:column;align-items:flex-start;gap:12px}
+ #history-view .head-actions{flex-wrap:wrap}
 }
+
+/* Clarity pass: fewer things competing for attention. */
+.monitoring-settings>summary{flex-wrap:nowrap;gap:12px}
+.monitoring-settings>summary .summary-note{display:block;flex:1 1 auto;min-width:0;text-align:right;font-size:12px;color:var(--muted)}
+@media (max-width:640px){.monitoring-settings>summary{flex-wrap:wrap;row-gap:2px}.monitoring-settings>summary .summary-note{order:3;flex-basis:100%;text-align:left}.monitoring-settings>summary:after{order:2}}
+.dialog-group{margin:22px 0 0;padding-top:16px;border-top:1px solid var(--line);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.dialog-group:first-of-type{margin-top:16px}
+dialog .dialog-group+.field{margin-top:12px}
+.camera-insights>#camera-fps{margin:4px 0 6px;text-align:left}
+/* During a session the camera is already chosen; only status and Turn camera off stay. */
+.app[data-view=session] #native-camera-field,.app[data-view=session] #camera-list-hint{display:none}
+.app[data-view=session] .camera-controls{justify-content:flex-end}
+.monitoring-settings>summary>span:first-child{white-space:nowrap}

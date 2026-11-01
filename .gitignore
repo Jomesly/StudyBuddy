@@ -10,7 +10,7 @@ yolov5/
 # Environment files and credentials
 .env
 .env.*
-!.env.example
+.env*
 *.pem
 *.key
 *.p12
@@ -18,6 +18,11 @@ yolov5/
 .git-credentials
 credentials.json
 secrets.json
+*.keystore
+id_rsa*
+id_ed25519*
+.ssh/
+*.har
 
 # Downloaded models, training output, and generated browser assets
 *.pt
@@ -36,6 +41,7 @@ coverage/
 test-results/
 playwright-report/
 .playwright-mcp/
+.playwright-cli/
 *.log
 *.sqlite
 *.sqlite3
@@ -50,3 +56,24 @@ captures/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Local planning and verification artifacts
+PRODUCT-BRIEF.md
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+SKILL.md
+.github/copilot-instructions.md
+.agents/
+.claude/
+.codex/
+.cursor/
+prompts/
+*.prompt.md
+*prompt*.md
+*transcript*.md
+docs/design-prototype.html
+docs/design-reconstruction-plan.md
+docs/design-verification.md
+docs/engine-camera-verification.md
+docs/web-verification.md

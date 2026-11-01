@@ -6,11 +6,18 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', r => r.fulfill({ status: 503, json: { detail: 'Python engine isolated in browser-only tests' } }));
 });
 
+// The engine picker lives in Settings, so go there and return focus to the page.
+async function chooseEngine(page, engine) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Detection engine').selectOption(engine);
+  await page.keyboard.press('Escape');
+}
+
 // Browser-only flows must not drive the real Python engine (and its camera) when one is running.
 async function open(page) {
   await page.goto('/');
   await page.locator('#monitoring-title').click();
-  await page.getByLabel('Detection engine').selectOption('browser');
+  await chooseEngine(page, 'browser');
 }
 
 async function start(page, task = 'Read chapter four') {
@@ -190,7 +197,7 @@ test('StudyBuddy keeps the timer, camera and actions together above the desktop 
   await expect(page.locator('.brand')).toContainText('StudyBuddy');
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
   await page.locator('#monitoring-title').click();
-  await page.getByLabel('Detection engine').selectOption('browser');
+  await chooseEngine(page, 'browser');
   await page.locator('#monitoring-title').click();
   await start(page, 'Review chapter notes');
   for (const [width, height] of [[1366, 768], [1280, 720], [1440, 900]]) {

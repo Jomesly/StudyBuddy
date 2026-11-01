@@ -46,8 +46,11 @@ def authorize(request):
 
 
 class Control(BaseModel):
-    action: Literal['start', 'preview', 'pause', 'resume', 'end', 'camera', 'settings', 'snooze', 'sound']
+    action: Literal['start', 'preview', 'pause', 'resume', 'end', 'camera', 'settings', 'snooze', 'sound', 'release', 'recover']
     sessionId: str = Field(default='', max_length=100)
+    task: str = Field(default='Recovered session', max_length=100)
+    duration: float = Field(default=1500, gt=0, le=10800)
+    startedAt: str = Field(default='', max_length=40)
     remaining: float = Field(default=1500, gt=0, le=10800)
     active: float = Field(default=0, ge=0, le=10800)
     paused: float = Field(default=0, ge=0, le=86400)
@@ -57,6 +60,7 @@ class Control(BaseModel):
     appCheck: bool = True
     mouthCheck: bool = True
     mute: bool = False
+    reminderCooldown: Literal[5, 30, 60, 120] = 60
     mode: Literal['screen', 'paper', 'lecture'] = 'screen'
     cameraIndex: int = Field(default=0, ge=0, le=31)
     cameraName: str = Field(default='', max_length=120)

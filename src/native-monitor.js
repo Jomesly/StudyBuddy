@@ -34,8 +34,10 @@ export class NativeMonitor {
   }
   async request(action, values = {}, keepalive = false) {
     if (!this.ready && !await this.connect()) throw new Error('The original Python engine is not connected. Run npm run dev first.');
-    const response = await fetch('/api/control', { method: 'POST', headers: this.headers(),
+    const send = () => fetch('/api/control', { method: 'POST', headers: this.headers(),
       body: JSON.stringify({ action, ...values }), keepalive, signal: keepalive ? undefined : AbortSignal.timeout(10000) });
+    let response = await send();
+    if (!keepalive && response.status === 403 && await this.connect()) response = await send();
     const state = await response.json();
     if (!response.ok) throw new Error(typeof state.detail === 'string' ? state.detail : 'The original engine could not apply this change.');
     this.state = state; this.onState(state);
@@ -102,6 +104,6 @@ export class NativeMonitor {
   }
   leave() {
     this.stopPreview();
-    if (this.active && this.ready) void this.request('pause', {}, true).catch(() => {});
+    if (this.active && this.ready) void this.request('release', {}, true).catch(() => {});
   }
 }

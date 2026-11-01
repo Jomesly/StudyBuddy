@@ -1,4 +1,5 @@
 import copy
+from datetime import datetime, timezone
 from collections import deque
 import sys
 import threading
@@ -17,10 +18,13 @@ class Engine:
         self.closing = threading.Event()
         self.rules = DistractionRules()
         self.owner = None
+        self.owner_until = 0
+        self.owner_released = False
+        self.session_details = {}
         self.session_id = None
         self.phase = 'idle'
         self.options = {'camera': False, 'appCheck': True, 'mouthCheck': True, 'mute': False,
-                        'mode': 'screen', 'cameraIndex': 0, 'cameraName': '', 'allowedApps': []}
+                        'mode': 'screen', 'cameraIndex': 0, 'cameraName': '', 'allowedApps': [], 'reminderCooldown': 5}
         self.camera_state = 'off'
         self.camera_error = None
         self.camera_epoch = 0
@@ -65,16 +69,30 @@ class Engine:
 
     def control(self, action, owner, data):
         with self.lock:
-            if self.owner and self.owner != owner and self.phase in ('focus', 'paused', 'break', 'preview'):
-                raise ValueError('Another StudyBuddy tab owns the current session. Use that tab to pause or end it.')
             now = self.clock()
             self.step(now)
+            if action == 'recover':
+                if not self.session_id or self.phase not in ('focus', 'paused', 'break', 'summary'):
+                    raise ValueError('There is no session to recover.')
+                if self.owner != owner and not self.owner_released and now < self.owner_until:
+                    raise ValueError('The other tab is still connected. Pause or end the session there first.')
+                self.owner = owner
+                self.options['camera'] = False
+                self.camera_epoch += 1
+                self.event = None
+                if self.phase == 'focus':
+                    self.phase = 'paused'
+            elif self.owner and self.owner != owner and self.phase in ('focus', 'paused', 'break', 'preview'):
+                raise ValueError('Another StudyBuddy tab owns the current session. Use that tab to pause or end it.')
             if action == 'start':
                 if self.phase in ('focus', 'paused', 'break') and data['sessionId'] != self.session_id:
                     raise ValueError('End the current session before starting another.')
                 self.owner, self.session_id = owner, data['sessionId']
                 self.active, self.paused = data.get('active', 0), data.get('paused', 0)
                 self.remaining = data['remaining']
+                self.session_details = {'task': data.get('task', 'Recovered session'),
+                                        'duration': data.get('duration', self.active + self.remaining),
+                                        'startedAt': data.get('startedAt') or datetime.now(timezone.utc).isoformat()}
                 self.observations = dict(data.get('observations', {}))
                 self.reminders = data.get('reminders', 0)
                 self.break_remaining = 300
@@ -92,13 +110,17 @@ class Engine:
                 self.options['cameraName'] = data.get('cameraName', '')
                 self.preview_until = now + 120
                 self.camera_epoch += 1
-            elif action == 'pause':
+            elif action in ('pause', 'release'):
                 if self.phase == 'focus':
                     self.phase = 'paused'
                 elif self.phase == 'preview':
                     self.phase = 'idle'
                 self.sounds.stop()
                 self.rules = DistractionRules()
+                if action == 'release':
+                    self.options['camera'] = False
+                    self.camera_epoch += 1
+                    self.event = None
             elif action == 'resume':
                 if self.phase == 'paused':
                     self.phase = 'focus'
@@ -116,7 +138,7 @@ class Engine:
                 self.camera_epoch += 1
                 self.rules = DistractionRules()
             elif action == 'settings':
-                for key in ('mute', 'mouthCheck', 'appCheck', 'allowedApps'):
+                for key in ('mute', 'mouthCheck', 'appCheck', 'allowedApps', 'reminderCooldown'):
                     if key in data:
                         self.options[key] = data[key]
                 if self.options['mute']:
@@ -126,12 +148,17 @@ class Engine:
                 self.sounds.stop()
             elif action == 'sound':
                 self.sounds.play()
+            if self.owner == owner:
+                self.owner_released = action == 'release'
+                self.owner_until = now + 120
             self.anchor = now
             return self.snapshot(owner)
 
     def step(self, now):
         """Advance the authoritative timer and observations without browser polling."""
-        delta = max(0, now - self.anchor)
+        leased = self.owner is not None and self.phase in ('focus', 'paused', 'break')
+        end = min(now, self.owner_until) if leased else now
+        delta = 0 if leased and self.owner_released else max(0, end - self.anchor)
         self.anchor = now
         if self.phase == 'preview' and now >= self.preview_until:
             self.phase = 'idle'
@@ -146,7 +173,7 @@ class Engine:
                 self.observations[kind] = self.observations.get(kind, 0) + min(used, 1)
             previous, self.reason = self.reason, kind
             if kind not in ('present', 'checking') and now >= self.snoozed_until:
-                if kind != previous or now - self.last_alert >= 5:
+                if now - self.last_alert >= self.options['reminderCooldown']:
                     self.last_alert = now
                     self.reminders += 1
                     self.event_id += 1
@@ -169,18 +196,31 @@ class Engine:
             self.break_remaining = max(0, self.break_remaining - delta)
             if self.break_remaining == 0:
                 self.phase = 'summary'
+        if leased and now >= self.owner_until and not self.owner_released:
+            if self.phase == 'focus':
+                self.phase = 'paused'
+            self.owner_released = True
+            self.options['camera'] = False
+            self.camera_epoch += 1
+            self.sounds.stop()
 
     def snapshot(self, owner):
         with self.lock:
+            if self.clock() > self.anchor:
+                self.step(self.clock())
             # Keep an enabled preview alive while its owning tab is connected.
             # The lease still releases a preview whose tab disappears without pagehide.
             if self.owner == owner and self.phase == 'preview':
                 self.preview_until = self.clock() + 120
+            if self.owner == owner and not self.owner_released:
+                self.owner_until = self.clock() + 120
             # A second tab can discover a conflict without seeing titles/frames.
             if self.owner and self.owner != owner and self.phase in ('focus', 'paused', 'break', 'preview'):
-                return {'busy': True, 'phase': self.phase}
+                return {'busy': True, 'phase': self.phase, 'canRecover': self.owner_released}
             return copy.deepcopy({
                 'busy': False, 'sessionId': self.session_id, 'phase': self.phase,
+                **self.session_details, 'released': self.owner_released,
+                'snoozeRemaining': max(0, self.snoozed_until - self.clock()),
                 'cameraState': self.camera_state, 'cameraError': self.camera_error,
                 'cameraFps': self.camera_fps, 'cameraReportedFps': self.camera_reported_fps,
                 'detectionFps': self.detection_fps, 'detectionError': self.detection_error,

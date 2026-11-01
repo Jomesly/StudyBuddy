@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+// The engine picker lives in Settings, so go there and return focus to the page.
+async function chooseEngine(page, engine) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Detection engine').selectOption(engine);
+  await page.keyboard.press('Escape');
+}
+
 async function nativeCamera(page, cameras = [{ index: 0, name: 'Camera A' }, { index: 1, name: 'Camera B' }]) {
   // Keep the real UI, JPEG decoder, and stream lifecycle; only replace hardware/API I/O.
   await page.addInitScript(() => {
@@ -101,8 +108,8 @@ test('switching back to Python starts its enabled preview', async ({ page }) => 
   await page.goto('/');
   await expectFrame(page);
   await page.locator('#monitoring-title').click();
-  await page.getByLabel('Detection engine').selectOption('browser');
-  await page.getByLabel('Detection engine').selectOption('python');
+  await chooseEngine(page, 'browser');
+  await chooseEngine(page, 'python');
   await expect(page.locator('#camera')).toBeChecked();
   await expectFrame(page);
 });
@@ -123,7 +130,7 @@ test('changing engine while camera enable is pending releases Python capture', a
   await page.goto('/');
   await expect.poll(() => api.controls.some(c => c.action === 'preview')).toBe(true);
   await page.locator('#monitoring-title').click();
-  await page.getByLabel('Detection engine').selectOption('browser');
+  await chooseEngine(page, 'browser');
   release();
   await expect.poll(() => api.controls.at(-1)?.action).toBe('end');
   await expect(page.locator('#engine-chip')).toHaveText('Browser-only mode');

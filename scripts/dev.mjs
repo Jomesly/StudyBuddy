@@ -4,8 +4,13 @@ import { resolve } from 'node:path';
 import { createServer } from 'vite';
 
 const windows = process.platform === 'win32';
+const isPython311 = executable => {
+  if (!existsSync(executable)) return false;
+  const result = spawnSync(executable, ['-c', 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'], { encoding: 'utf8', windowsHide: true });
+  return result.status === 0 && result.stdout.trim() === '3.11';
+};
 let python = resolve(windows ? 'venv/Scripts/python.exe' : 'venv/bin/python');
-if (!existsSync(python)) {
+if (!isPython311(python)) {
   python = resolve(windows ? '.venv-web/Scripts/python.exe' : '.venv-web/bin/python');
   if (!existsSync(python)) {
     console.log('Preparing the Python 3.11 detection environment…');
@@ -13,11 +18,18 @@ if (!existsSync(python)) {
     if (result.status !== 0) throw new Error('Python 3.11 is required for the original engine. Install it, then run npm run dev again.');
   }
 }
-const probe = spawnSync(python, ['-c', "import importlib.util; assert all(importlib.util.find_spec(m) for m in ['cv2','mediapipe','pygame','ultralytics','fastapi','uvicorn']); import sys; assert sys.platform != 'win32' or all(importlib.util.find_spec(m) for m in ['pygetwindow','pygrabber'])"], { windowsHide: true, stdio: 'ignore' });
+if (!isPython311(python)) {
+  throw new Error(`The environment at ${python} needs Python 3.11. Rename .venv-web to keep a backup, then rerun npm run dev with Python 3.11 installed.`);
+}
+const check = () => spawnSync(python, ['-m', 'backend.check_runtime'], { encoding: 'utf8', windowsHide: true,
+  env: { ...process.env, PYGAME_HIDE_SUPPORT_PROMPT: '1' } });
+const probe = check();
 if (probe.status !== 0) {
   console.log('Installing the original Python detection dependencies (first run may take a few minutes)…');
   const install = spawnSync(python, ['-m', 'pip', 'install', '-r', 'requirements.txt'], { stdio: 'inherit', windowsHide: true });
   if (install.status !== 0) throw new Error('Python setup failed. Review the installation error above.');
+  const verified = check();
+  if (verified.status !== 0) throw new Error(verified.stderr || 'The detector could not import its dependencies. Recreate the Python 3.11 environment and retry.');
 }
 
 let backend, server;
@@ -40,6 +52,7 @@ try {
   if (existing) throw new Error('Port 8766 is already in use. Stop the other StudyBuddy engine terminal before starting this one.');
   backend = spawn(python, ['-m', 'backend.server'], { cwd: process.cwd(), stdio: 'inherit', windowsHide: true,
     env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', PYGAME_HIDE_SUPPORT_PROMPT: '1' } });
+  backend.on('error', error => { console.error(`Could not start the Python engine: ${error.message}`); void shutdown(1); });
   backend.on('exit', code => { if (!stopping) { console.error('Python detection engine stopped.'); void shutdown(code || 1); } });
   let ready = false;
   const healthUrl = new URL('/api/health', server.resolvedUrls.local[0]);

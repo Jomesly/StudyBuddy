@@ -7,7 +7,7 @@ export default defineConfig({
   testDir: './tests/browser',
   fullyParallel: false,
   timeout: 90000,
-  use: { baseURL, channel: 'chrome', trace: 'retain-on-failure' },
-  webServer: { command: production ? 'npm run preview' : 'npm run dev', url: baseURL, reuseExistingServer: !process.env.CI },
+  use: { baseURL, channel: process.env.CI ? undefined : 'chrome', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  webServer: { command: production ? 'npm run preview' : 'npm run dev', url: baseURL, reuseExistingServer: !process.env.CI, timeout: 180000 },
   reporter: [['list']],
 });

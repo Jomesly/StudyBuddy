@@ -15,8 +15,8 @@
   </nav>
   <div class="sidebar-foot">
     <p class="engine-chip" id="engine-chip" data-state="connecting"><i class="dot" aria-hidden="true"></i><span id="engine-chip-text">Connecting to engine</span></p>
-    <p class="meta" id="sensor-status">Camera off · Tab reminders off</p>
-    <p class="meta" id="storage-status">Your session, on your device</p>
+    <p class="meta" id="sensor-status" hidden>Camera off · Tab reminders off</p>
+    <p class="meta" id="storage-status" hidden>Your session, on your device</p>
   </div>
 </aside>
 
@@ -25,6 +25,7 @@
     <p class="eyebrow" id="today-label"></p>
     <h1 id="page-heading" tabindex="-1">Make room for one thing.</h1>
     <p class="lede" id="page-description">Choose a task. Find a comfortable pace.</p>
+    <p id="workspace-status" class="workspace-status" role="status"></p>
   </header>
 
   <div class="notice" id="notice" hidden><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4 21 20H3z"/><path d="M12 10v4M12 17v.5"/></svg><div><p id="notice-text"></p><div class="notice-actions" id="notice-actions"></div></div></div>
@@ -38,7 +39,7 @@
 
   <div class="workspace">
       <section class="card" id="ready-view" aria-labelledby="new-session-title">
-        <div class="card-head"><h2 class="card-title" id="new-session-title">New session</h2><span class="pill">Your study space</span></div>
+        <h2 class="card-title" id="new-session-title">New session</h2>
         <form id="session-form" novalidate>
           <div class="field"><label for="task">What would you like to work on?</label><input id="task" type="text" maxlength="100" placeholder="Read a chapter, work on a project…" required aria-describedby="task-error"><p id="task-error" class="error" hidden>Give your session a short name.</p></div>
           <div class="field-row">
@@ -46,8 +47,7 @@
             <div class="field"><label for="mode">Study style</label><select id="mode"><option value="screen">Screen study</option><option value="paper">Paper notes</option><option value="lecture">Lecture</option></select></div>
           </div>
       <details class="card monitoring-settings" id="monitoring-card" aria-labelledby="monitoring-title">
-        <summary id="monitoring-title"><span>Monitoring settings</span><span class="summary-note">Camera, app checks &amp; exceptions</span></summary><div class="monitoring-body">
-        <div class="field"><label for="engine">Detection engine</label><select id="engine"><option value="python">Original Python engine · full monitoring</option><option value="browser">Browser only · limited monitoring</option></select><p class="hint" id="engine-connection" role="status">Connecting to the original detection engine…</p></div>
+        <summary id="monitoring-title"><span>Reminders &amp; app checks</span><span class="summary-note" id="monitoring-summary">Camera off</span></summary><div class="monitoring-body">
         <div class="switch-list" id="monitoring-controls">
           <label class="switch-row"><input type="checkbox" role="switch" id="camera"><span>Camera reminders<small>Optional. Off means the camera is not used.</small></span></label>
           <label class="switch-row"><input type="checkbox" role="switch" id="app-check"><span>Tab-away reminders<small>Only detects this tab being hidden.</small></span></label>
@@ -56,7 +56,7 @@
         <div class="field" id="allowed-apps-field"><label for="allowed-apps">Apps or sites allowed for this task</label><input id="allowed-apps" type="text" maxlength="500" placeholder="For example: YouTube, Discord"><p class="hint">Optional exceptions to distraction detection. Separate names with commas.</p></div>
         <p class="hint" id="privacy-hint">Detection and camera preview stay on this computer. No video is recorded.</p>
       </div></details>
-          <div class="card-actions"><p class="hint" id="start-summary">Camera and app checks follow your monitoring settings.</p><button class="primary" type="submit">Start session</button></div>
+          <div class="card-actions"><button class="primary" type="submit">Start session</button></div>
         </form>
       </section>
 
@@ -73,7 +73,7 @@
         <div class="card-head"><h2 class="card-title" id="camera-title">Camera</h2><span class="pill" id="camera-chip" data-state="off">Off</span></div>
         <details id="camera-details" class="options" open><summary>Camera preview &amp; details</summary>
           <div class="camera-frame"><video id="camera-video" autoplay playsinline muted aria-label="Your live camera preview"></video><img id="native-camera-image" alt="Live camera with original face, phone and hand detection" hidden><canvas id="camera-overlay" aria-hidden="true"></canvas><span id="camera-placeholder">Your preview appears here when the camera is on.</span></div>
-          <details class="camera-insights"><summary>Detection details</summary><dl class="sensor-details"><div><dt>Face &amp; direction</dt><dd id="face-detail">Not checked</dd></div><div><dt>Phone</dt><dd id="phone-detail">Not checked</dd></div><div><dt>Hands</dt><dd id="hands-detail">Not checked</dd></div></dl>
+          <details class="camera-insights"><summary>Detection details</summary><p id="camera-fps" class="hint camera-fps" aria-live="off"></p><dl class="sensor-details"><div><dt>Face &amp; direction</dt><dd id="face-detail">Not checked</dd></div><div><dt>Phone</dt><dd id="phone-detail">Not checked</dd></div><div><dt>Hands</dt><dd id="hands-detail">Not checked</dd></div></dl>
           <button class="quiet-action" id="calibrate-camera" disabled>Recalibrate head direction</button>
           <p class="hint">Camera observations can be wrong; they do not measure attention. Phone visibility does not prove use.</p></details>
         </details>
@@ -90,6 +90,7 @@
       <section class="card" id="live-card" aria-labelledby="live-monitoring-title" hidden>
         <h2 class="card-title" id="live-monitoring-title">Distraction monitoring</h2>
         <p id="live-status" role="status" data-warning="false">Waiting for detection…</p>
+        <p id="snooze-status" class="hint" aria-live="off" hidden></p>
         <p id="active-app" class="hint">Active app: not checked</p>
         <p id="native-audio-error" class="error" hidden></p>
         <details class="options"><summary>Live session stats</summary><dl class="observation-list" id="live-stats"></dl><p class="hint">Estimated focus uses the original camera and app rules. It is an estimate, not a measure of learning.</p></details>
@@ -115,7 +116,8 @@
 
       <section class="card" id="history-view" aria-labelledby="history-title" hidden>
         <div class="card-head"><h2 class="card-title" id="history-title">All sessions</h2>
-          <div class="head-actions" id="history-actions" hidden><button class="quiet-action danger-text" id="clear-history">Clear history</button><button class="ghost" id="export-history">Export history</button></div></div>
+          <div class="head-actions" id="history-actions"><button class="quiet-action danger-text" id="clear-history" hidden>Clear history</button><button class="ghost" id="export-history" hidden>Export history</button><button class="ghost" id="import-history">Import history</button><input id="history-file" type="file" accept=".json,application/json" aria-label="History backup file" hidden></div></div>
+        <p id="import-status" class="hint" role="status"></p>
         <div class="notice" id="clear-confirm" hidden><div><p>Delete all session history and notes from this browser? This cannot be undone.</p><div class="notice-actions"><button id="confirm-clear">Delete history</button><button id="cancel-clear">Keep history</button></div></div></div>
         <div id="history-list"></div>
       </section>
@@ -131,7 +133,8 @@
   <details class="privacy-note"><summary>Privacy &amp; monitoring</summary><p>The original Python engine runs on this computer. It uses your original YOLOv8 model, MediaPipe face/head/mouth/hand detection, foreground window titles, and alert sound files. Camera images and app titles stay on this computer; preview images travel only over the local connection. No video recording or microphone is used. Pause or End session stops monitoring.</p><p>Full monitoring continues when you switch tabs or applications, until the session ends. It identifies active browser tabs from their visible window title, as the original app did; it does not read browsing history or URLs. Browser-only mode has limited tab visibility checks and suspends camera detection when hidden. Completed sessions and notes are saved in this browser; export or clear them in History.</p></details>
 </main>
 
-<dialog id="settings" aria-labelledby="settings-title"><h2 id="settings-title">Make yourself comfortable.</h2><p class="hint">A few preferences. Nothing to configure before you begin.</p><div class="field"><label for="theme">Appearance</label><select id="theme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">Follow system</option></select></div><label class="switch-row"><input id="mute" type="checkbox" role="switch" checked><span>Keep reminders silent<small>Show a gentle message without a sound.</small></span></label><p class="hint">Preferences and completed sessions are saved in this browser, on this device.</p><div class="card-actions"><button class="quiet-action" id="test-sound">Try reminder sound</button><button class="primary" id="close-settings">Done</button></div></dialog>
+<dialog id="settings" aria-labelledby="settings-title"><h2 id="settings-title">Make yourself comfortable.</h2><p class="hint">A few preferences. Nothing to configure before you begin.</p><div class="field"><label for="theme">Appearance</label><select id="theme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">Follow system</option></select></div><h3 class="dialog-group">Detection</h3><div class="field"><label for="engine">Detection engine</label><select id="engine"><option value="python">Original Python engine · full monitoring</option><option value="browser">Browser only · limited monitoring</option></select><p class="hint" id="engine-connection" role="status">Connecting to the original detection engine…</p></div><h3 class="dialog-group">Reminders</h3><div class="field"><label for="reminder-cooldown">Minimum time between reminders</label><select id="reminder-cooldown"><option value="5">5 seconds (frequent)</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select><p class="hint">Applies to both monitoring modes. Snooze pauses reminders for five minutes.</p></div><label class="switch-row"><input id="mute" type="checkbox" role="switch" checked><span>Keep reminders silent<small>Show a gentle message without a sound.</small></span></label><p class="hint">Preferences and completed sessions are saved in this browser, on this device.</p><div class="card-actions"><button class="quiet-action" id="test-sound">Try reminder sound</button><button class="primary" id="close-settings">Done</button></div></dialog>
 <p id="announcer" role="status" class="toast"></p>
+<p id="notice-announcer" role="status" aria-atomic="true" class="sr-only"></p>
 </div>
 <script type="module" src="/src/app.js"></script></body></html>

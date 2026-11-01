@@ -1,12 +1,13 @@
 import { Session, RUNNING_STATES, format, minutes } from './session.mjs';
 import { ObservationTracker, classifyObservation, observationLabels, reminderMessages } from './observations.mjs';
-import { load, save } from './storage.mjs';
+import { load, save, importHistory } from './storage.mjs';
 import { CameraMonitor } from './monitor.js';
 import { NativeMonitor } from './native-monitor.js';
 import { summarize, duration, pickCamera } from './dashboard.mjs';
 import '@fontsource-variable/inter/wght.css';
 
 const $ = id => document.getElementById(id);
+function setText(id, value) { if ($(id).textContent !== value) $(id).textContent = value; }
 const saved = load();
 let history = saved.history;
 const preferences = saved.preferences;
@@ -51,13 +52,19 @@ function button(text, action) {
   return el;
 }
 function notice(message, actions = []) {
+  const changed = $('notice-text').textContent !== (message || '');
   $('notice').hidden = !message;
-  $('notice-text').textContent = message || '';
+  setText('notice-text', message || '');
   $('notice-actions').replaceChildren(...actions.map(([label, action]) => button(label, action)));
+  if (changed) setText('notice-announcer', message || '');
+}
+function showStorage(ok) {
+  $('storage-status').textContent = ok ? 'Saved in this browser' : 'Storage unavailable · keep this page open';
+  $('storage-status').hidden = ok;
 }
 function persist() {
   const ok = save({ history, current: session && RUNNING_STATES.includes(session.state) ? session.record() : null, preferences });
-  $('storage-status').textContent = ok ? 'Saved in this browser' : 'Storage unavailable · keep this page open';
+  showStorage(ok);
   return ok;
 }
 function saveRecord() {
@@ -101,7 +108,8 @@ function sessionRow(record, className) {
 }
 function renderHistory() {
   const list = $('history-list'); list.replaceChildren();
-  $('history-actions').hidden = history.length === 0;
+  $('history-actions').hidden = false;
+  $('export-history').hidden = $('clear-history').hidden = history.length === 0;
   $('clear-confirm').hidden = true;
   if (!history.length) {
     const message = document.createElement('p'); message.className = 'empty'; message.textContent = 'Your first session will appear here.';
@@ -146,7 +154,7 @@ function render() {
   $('nav-focus').setAttribute('aria-current', view === 'history' ? 'false' : 'page');
   $('nav-history').setAttribute('aria-current', view === 'history' ? 'page' : 'false');
   $('camera-panel').hidden = !['ready', 'session'].includes(view) || session?.state === 'break';
-  $('stats').hidden = !['ready', 'history'].includes(view);
+  $('stats').hidden = view !== 'history'; // Setup leads with the task; totals live in History.
   $('recent-card').hidden = view !== 'ready';
   $('monitoring-card').hidden = view !== 'ready';
   $('live-card').hidden = view !== 'session' || session?.state === 'break';
@@ -195,10 +203,28 @@ function render() {
 function setChip(id, state, text) {
   $(id).dataset.state = state;
   $(id).title = text;
-  (id === 'engine-chip' ? $('engine-chip-text') : $(id)).textContent = text;
+  setText(id === 'engine-chip' ? 'engine-chip-text' : id, text);
+}
+function updateMonitoringSummary() {
+  const camera = $('camera').checked ? 'Camera reminders on' : 'Camera reminders off';
+  const apps = $('app-check').checked ? (originalMode() ? 'App checks on' : 'Tab checks on') : 'App checks off';
+  const talking = $('mode').value !== 'lecture' && $('mouth-check').checked ? 'Talking reminders on' : '';
+  $('monitoring-summary').textContent = [camera, apps, talking].filter(Boolean).join(' · ');
 }
 function updateSensorStatus() {
+  updateMonitoringSummary();
   const camera = originalMode() ? nativeState?.cameraState || 'off' : monitor.state;
+  $('camera-panel').dataset.camera = camera;
+  const status = !originalMode() ? 'Browser mode' : !native.ready ? 'Engine disconnected'
+    : nativeState?.busy ? 'Session in another tab' : session?.state === 'paused' ? 'Monitoring paused'
+    : session?.state === 'focus' ? 'Monitoring active' : 'Ready to study';
+  const cameraStatus = camera === 'on' ? 'Camera on' : ['starting', 'loading'].includes(camera) ? 'Camera starting'
+    : camera === 'error' ? 'Camera needs attention' : 'Camera off';
+  const text = `${status} · ${cameraStatus}`;
+  if ($('workspace-status').textContent !== text) $('workspace-status').textContent = text;
+  const snoozeSeconds = originalMode() ? nativeState?.snoozeRemaining || 0 : Math.max(0, (snoozedUntil - Date.now()) / 1000);
+  $('snooze-status').hidden = snoozeSeconds <= 0;
+  $('snooze-status').textContent = snoozeSeconds > 0 ? `Reminders snoozed · ${format(snoozeSeconds)}` : '';
   setChip('camera-chip', camera === 'starting' ? 'loading' : camera, { off: 'Off', starting: 'Starting', loading: 'Starting', on: 'On', error: 'Needs attention' }[camera] || 'Off');
   if (!originalMode()) setChip('engine-chip', 'browser', 'Browser-only mode');
   else if (!engineChecked) setChip('engine-chip', 'connecting', 'Connecting to engine');
@@ -243,7 +269,7 @@ const monitor = new CameraMonitor($('camera-video'), {
     drawOverlay(sample);
     if (session?.state !== 'focus' || document.hidden) { tracker.reset(); return; }
     const kind = classifyObservation(sample, session);
-    $('live-status').textContent = observationLabels[kind] || kind;
+    setText('live-status', observationLabels[kind] || kind);
     const observed = tracker.observe(kind, Date.now());
     session.observations[kind] = (session.observations[kind] || 0) + observed.seconds;
     if (observed.stable && kind !== 'present') remind(kind);
@@ -265,12 +291,35 @@ const native = new NativeMonitor({
 });
 
 function applyNativeState(state) {
+  const wasBusy = nativeState?.busy;
   nativeState = state;
   if (!originalMode()) return;
-  if (state.busy) { native.stopPreview($('native-camera-image')); $('engine-connection').textContent = 'Another StudyBuddy tab owns the session. Return to that tab to control it.'; return; }
+  if (state.busy) {
+    native.stopPreview($('native-camera-image'));
+    const message = state.canRecover ? 'The previous tab disconnected. Recover its saved session with the camera off.'
+      : 'Another StudyBuddy tab owns the session. Return to that tab, or recover here once it disconnects.';
+    $('engine-connection').textContent = message;
+    if ($('notice-text').textContent !== message) notice(message, state.canRecover ? [['Recover session', recoverNativeSession]] : []);
+    updateSensorStatus();
+    return;
+  }
+  if (wasBusy) notice('');
+  if (state.released && session?.id === state.sessionId) $('camera').checked = false;
+  if (session?.engine === 'python' && RUNNING_STATES.includes(session.state) && state.sessionId !== session.id) {
+    lastNativeEvent = 0;
+    if (session.state !== 'paused' || session.remaining <= 0) {
+      session.state = session.remaining > 0 ? 'paused' : 'summary';
+      $('camera').checked = false;
+      if (session.state === 'summary') { saveRecord(); view = 'summary'; }
+      persist(); render();
+    }
+    const message = 'Your saved progress is paused. Resume to continue after the engine restart, or end the session to keep its recap.';
+    if ($('notice-text').textContent !== message) notice(message);
+  }
   const camera = state.cameraState;
   const fps = state.cameraFps ? ` · ${Math.round(state.cameraFps)} FPS` : '';
-  $('camera-message').textContent = state.cameraError || state.detectionError || (camera === 'on' ? `Live camera${fps}. ${state.sample ? 'YOLOv8 + MediaPipe detection is running.' : 'Starting distraction detection…'}` : camera === 'loading' ? 'Starting the camera…' : camerasLoaded && !cameraList.length ? 'No camera found. Connect a camera, then refresh the list. The timer and app detection still work.' : 'Camera off. Enable it for phone, face, head and hand checks.');
+  setText('camera-message', state.cameraError || state.detectionError || (camera === 'on' ? `Live camera. ${state.sample ? 'Distraction detection is running.' : 'Starting distraction detection…'}` : camera === 'loading' ? 'Starting the camera…' : camerasLoaded && !cameraList.length ? 'No camera found. Connect a camera, then refresh the list. The timer and app detection still work.' : 'Camera off. Enable it for phone, face, head and hand checks.'));
+  $('camera-fps').textContent = camera === 'on' ? `${fps.replace(' · ', '')}${state.detectionFps ? ` · Detection ${state.detectionFps} FPS` : ''}` : '';
   $('enable-camera').hidden = ['loading', 'on'].includes(camera);
   $('enable-camera').disabled = session?.state === 'paused';
   $('stop-camera').hidden = !['loading', 'on'].includes(camera);
@@ -284,7 +333,7 @@ function applyNativeState(state) {
     $('phone-detail').textContent = state.sample.phoneVisible ? `Phone detected${state.sample.phoneNearHand ? ' · near a hand' : ''}` : 'No phone detected';
     $('hands-detail').textContent = `${state.sample.hands.length} in view`;
   }
-  $('live-status').textContent = state.phase === 'paused' ? 'Monitoring paused' : state.phase === 'focus' ? state.message : 'Monitoring is off';
+  setText('live-status', state.phase === 'paused' ? 'Monitoring paused' : state.phase === 'focus' ? state.message : 'Monitoring is off');
   $('live-status').dataset.warning = String(!['present', 'checking'].includes(state.reason) && state.phase === 'focus');
   $('active-app').textContent = state.appError || (state.options?.appCheck && state.phase === 'focus' ? `Active app: ${state.app.name}${state.app.title ? ` · ${state.app.title}` : ''}` : 'Active-app monitoring is off');
   $('native-audio-error').hidden = !state.audioError;
@@ -319,9 +368,33 @@ async function nativeAction(action, values = {}) {
   catch (error) { notice(error.message); announce(error.message); return null; }
 }
 
+async function recoverNativeSession() {
+  if (controlPending) return;
+  controlPending = true;
+  try {
+    const state = await nativeAction('recover');
+    if (!state) return;
+    const recovered = new Session({ task: state.task || session?.task || 'Recovered session',
+      duration: state.duration || state.active + state.remaining, mode: state.options.mode });
+    Object.assign(recovered, { id: state.sessionId, engine: 'python', startedAt: state.startedAt || recovered.startedAt,
+      state: state.phase, active: state.active, paused: state.paused, remaining: state.remaining,
+      breakRemaining: state.breakRemaining, observations: state.observations, reminders: state.reminders,
+      tabCheck: state.options.appCheck, mouthCheck: state.options.mouthCheck });
+    session = recovered;
+    $('camera').checked = false;
+    $('app-check').checked = state.options.appCheck;
+    initialPreviewPending = false;
+    view = state.phase === 'summary' ? 'summary' : 'session';
+    if (view === 'summary') saveRecord();
+    notice(''); persist(); render(); applyNativeState(state); focusHeading();
+    announce('Session recovered. Camera is off. Resume when you are ready.');
+  } finally { controlPending = false; }
+}
+
 function configureEngineUI() {
   const full = originalMode();
   native.active = full;
+  if (!full) setText('camera-fps', '');
   if (!full) native.stopPreview($('native-camera-image'));
   $('allowed-apps-field').hidden = !full;
   $('native-camera-field').hidden = !full;
@@ -449,7 +522,7 @@ function playSound(force = false) {
 }
 function remind(kind) {
   const now = Date.now();
-  if (session?.state !== 'focus' || now < snoozedUntil || now - lastReminderAt < 60000) return;
+  if (session?.state !== 'focus' || now < snoozedUntil || now - lastReminderAt < preferences.reminderCooldown * 1000) return;
   lastReminderAt = now; session.reminders++;
   const actions = [
     ['Keep going', () => notice('')],
@@ -476,6 +549,7 @@ function handleTransition(previous) {
   persist(); render();
 }
 function tick() {
+  updateSensorStatus();
   if (!session || !RUNNING_STATES.includes(session.state)) return;
   if (session.engine === 'python') return; // Python owns time and stats, including while the tab is hidden.
   const previous = session.state;
@@ -494,6 +568,7 @@ async function pauseSession() {
     try {
       if (nativeState?.sessionId !== session.id && session.state === 'paused') await nativeAction('start', nativeSessionOptions());
       else await nativeAction(session.state === 'paused' ? 'resume' : 'pause');
+      if (nativeState?.sessionId === session.id) notice('');
       render(); persist();
     } finally { controlPending = false; }
     return;
@@ -509,6 +584,10 @@ async function pauseSession() {
 async function endSession() {
   if (!session || !RUNNING_STATES.includes(session.state)) return;
   if (session.engine === 'python') {
+    if (nativeState && !nativeState.busy && nativeState.sessionId !== session.id) {
+      session.state = 'summary'; saveRecord(); view = 'summary'; notice(''); render(); persist(); focusHeading();
+      return;
+    }
     if (controlPending) return;
     controlPending = true;
     try {
@@ -525,7 +604,8 @@ async function endSession() {
 }
 
 function nativeSessionOptions() {
-  return { sessionId: session.id, remaining: session.remaining, active: session.active, paused: session.paused,
+  return { sessionId: session.id, task: session.task, duration: session.duration, startedAt: session.startedAt,
+    remaining: session.remaining, active: session.active, paused: session.paused, reminderCooldown: preferences.reminderCooldown,
     observations: session.observations, reminders: session.reminders,
     camera: $('camera').checked && $('native-camera-index').value !== '', appCheck: $('app-check').checked, mouthCheck: $('mouth-check').checked,
     mute: preferences.mute, mode: session.mode, ...selectedCamera(),
@@ -569,6 +649,7 @@ $('camera-device').addEventListener('change', () => void enableCamera($('camera-
 $('calibrate-camera').addEventListener('click', () => { monitor.calibrate(); tracker.reset(); announce('Look toward the camera for a few seconds.'); });
 $('app-check').addEventListener('change', updateSensorStatus);
 $('camera').addEventListener('change', updateSensorStatus);
+$('mouth-check').addEventListener('change', updateSensorStatus);
 $('new-session').addEventListener('click', () => {
   session = null; summaryRecord = null; view = 'ready'; $('camera').checked = false;
   monitor.stop(); notice(''); persist(); render(); focusHeading();
@@ -596,6 +677,24 @@ $('export-history').addEventListener('click', () => {
   const link = document.createElement('a'); link.href = url; link.download = `studybuddy-sessions-${new Date().toISOString().slice(0, 10)}.json`; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000); announce('History exported.');
 });
+$('import-history').addEventListener('click', () => $('history-file').click());
+$('history-file').addEventListener('change', async event => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    if (file.size > 10 * 1024 * 1024) throw new Error('Choose a backup smaller than 10 MB.');
+    const result = importHistory(await file.text(), history);
+    // Save the proposed merge before replacing the displayed history.
+    if (!save({ history: result.history, current: session && RUNNING_STATES.includes(session.state) ? session.record() : null, preferences })) {
+      throw new Error('The backup could not be saved. Free browser storage and try again. Your existing history was kept.');
+    }
+    history = result.history; render();
+    $('import-status').textContent = result.added ? `Imported ${result.added} session${result.added === 1 ? '' : 's'}. The most recent 500 are kept.`
+      : 'These sessions are already in your history. Existing notes were kept.';
+    announce($('import-status').textContent);
+  } catch (error) { $('import-status').textContent = error.message; announce(error.message); }
+});
 $('clear-history').addEventListener('click', () => { $('clear-confirm').hidden = false; $('cancel-clear').focus(); });
 $('cancel-clear').addEventListener('click', () => { $('clear-confirm').hidden = true; $('clear-history').focus(); });
 $('confirm-clear').addEventListener('click', () => {
@@ -603,6 +702,12 @@ $('confirm-clear').addEventListener('click', () => {
 });
 $('theme').value = preferences.theme;
 $('mute').checked = preferences.mute;
+$('reminder-cooldown').value = String(preferences.reminderCooldown);
+$('reminder-cooldown').addEventListener('change', () => {
+  preferences.reminderCooldown = Number($('reminder-cooldown').value);
+  if (originalMode() && native.ready) void nativeAction('settings', { reminderCooldown: preferences.reminderCooldown });
+  persist(); announce('Reminder interval saved.');
+});
 function applyTheme() {
   const theme = preferences.theme === 'system' ? (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light') : preferences.theme;
   $('app').dataset.theme = theme; document.documentElement.dataset.theme = theme; document.documentElement.style.colorScheme = theme;
@@ -661,7 +766,7 @@ window.addEventListener('pageshow', event => {
 
 if (!saved.current && !saved.hasSavedData) { preferences.mute = false; $('mute').checked = false; }
 configureEngineUI(); applyTheme(); render();
-$('storage-status').textContent = saved.storageAvailable ? 'Saved in this browser' : 'Storage unavailable · keep this page open';
+showStorage(saved.storageAvailable);
 if (session) announce('Your saved session is ready. Camera is off. Resume when you are ready.');
 setInterval(tick, 250);
 void native.poll();

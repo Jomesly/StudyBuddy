@@ -1,0 +1,3 @@
+-r requirements.txt
+# Explicit test dependency; do not rely on a transitive install.
+httpx==0.28.1

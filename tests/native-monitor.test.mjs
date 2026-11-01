@@ -34,3 +34,19 @@ test('the renamed interface connects to an engine already running during the upd
   assert.equal(monitor.headers()['X-FocusBuddy-Client'], 'existing-browser-owner');
   assert.equal(values.get('studybuddy.client'), 'existing-browser-owner');
 });
+
+test('a control request retries once with a restarted engine key', async t => {
+  const requests = [], states = [];
+  const monitor = new NativeMonitor({ onConnection() {}, onState: state => states.push(state) });
+  monitor.ready = true; monitor.key = 'old';
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push(url);
+    if (url === '/api/health') return Response.json({ service: 'studybuddy-python', protocol: 1, key: 'new' });
+    if (options.headers['X-StudyBuddy-Key'] !== 'new') return Response.json({ detail: 'Unauthorized' }, { status: 403 });
+    assert.equal(JSON.parse(options.body).action, 'recover');
+    return Response.json({ phase: 'paused' });
+  });
+  await monitor.control('recover');
+  assert.deepEqual(requests, ['/api/control', '/api/health', '/api/control']);
+  assert.deepEqual(states, [{ phase: 'paused' }]);
+});

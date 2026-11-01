@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { load, save } from '../src/storage.mjs';
+import { load, save, importHistory } from '../src/storage.mjs';
 import { Session } from '../src/session.mjs';
 
 function memoryStorage() {
@@ -15,7 +15,7 @@ test('history, notes, and preferences survive reload; invalid observations are r
   assert.equal(loaded.history[0].note, record.note);
   assert.deepEqual(loaded.history[0].observations, { phone: 5 });
   assert.equal(loaded.current.task, record.task);
-  assert.deepEqual(loaded.preferences, { theme: 'dark', mute: false, cameraName: 'ASUS FHD webcam' });
+  assert.deepEqual(loaded.preferences, { theme: 'dark', mute: false, cameraName: 'ASUS FHD webcam', reminderCooldown: 60 });
 });
 test('corrupted or blocked storage does not prevent a timer-only session', () => {
   const corrupt = { getItem: () => '{broken' };
@@ -44,4 +44,41 @@ test('the new brand preserves existing history, notes and preferences', () => {
   assert.ok(values.has('studybuddy.web.v1'));
   save({ ...loaded, history: [], current: null }, storage);
   assert.deepEqual(load(storage).history, []);
+});
+
+function completed(task = 'Imported notes') {
+  const session = new Session({ task }); session.end();
+  return { ...session.record(), note: 'Keep this note', endedAt: new Date().toISOString() };
+}
+
+test('history import roundtrips exports and keeps existing notes on duplicate IDs', () => {
+  const record = completed();
+  const backup = JSON.stringify({ sessions: [record, record] });
+  const imported = importHistory(backup, []);
+  assert.equal(imported.added, 1);
+  assert.equal(imported.history[0].note, record.note);
+  const existing = { ...record, note: 'My newer reflection' };
+  const merged = importHistory(backup, [existing]);
+  assert.equal(merged.added, 0);
+  assert.deepEqual(merged.history, [existing]);
+});
+
+test('history import validates the entire backup before merging and strips unexpected fields', () => {
+  const record = completed();
+  for (const text of ['{bad', '{}', '{"sessions":[]}', JSON.stringify({ sessions: [record, { ...record, active: -1 }] }),
+    JSON.stringify({ sessions: [{ ...record, state: 'focus' }] }), JSON.stringify({ sessions: [{ ...record, note: 123 }] }),
+    JSON.stringify({ sessions: Array(501).fill(record) }), ' '.repeat(10 * 1024 * 1024 + 1)]) {
+    assert.throws(() => importHistory(text, []));
+  }
+  const safe = importHistory(JSON.stringify({ sessions: [{ ...record, key: 'discard', observations: { phone: 3, invalid: 10, away: -2 } }] }), []).history[0];
+  assert.equal(safe.key, undefined);
+  assert.deepEqual(safe.observations, { phone: 3 });
+});
+
+test('reminder preferences persist and unknown intervals fall back to one minute', () => {
+  const storage = memoryStorage();
+  save({ history: [], current: null, preferences: { reminderCooldown: 120 } }, storage);
+  assert.equal(load(storage).preferences.reminderCooldown, 120);
+  save({ history: [], current: null, preferences: { reminderCooldown: -5 } }, storage);
+  assert.equal(load(storage).preferences.reminderCooldown, 60);
 });
